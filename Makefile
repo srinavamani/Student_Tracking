@@ -1,7 +1,8 @@
 CC=gcc
 CFLAGS=-D PC 
 APPNAME = "BLE_Student_ID_Scanner"
-LP=-lpthread -lbluetooth -lxml2 -lsqlite3
+#LP=-lpthread -lbluetooth -lxml2 -lsqlite3
+LP=-lpthread -lxml2 -lsqlite3
 
 all: scan.o
 		$(CC) $(CFLAGS) -o $(APPNAME) scan.o -fno-stack-protector $(LP)

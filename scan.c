@@ -9,12 +9,13 @@
 #include <fcntl.h>
 #include <sqlite3.h>
 
-#define DB_PATH  "ID.db"
-#define Version		"1.0"
+#define CSV_PATH					"/home/root/ID.csv"
+#define DB_PATH					"/home/root/ID.db"
+#define Version					"1.0"
 #define MODEMDEVICE				"/dev/ttyUSB0"
 
 int callback(void *NotUsed, int argc, char **argv, char **azColName);
-int check_db(char *timestamp, char *Data_to_Post, char *RSSI, char *state);
+int check_db(char *Name, char *ID_Number, char *Phone_Number_1, char *Phone_Number_2, char *IN_Time, char *IN_Time_Update, char *OUT_Time, char *OUT_Time_Update, char *IN_SMS_status, char *OUT_SMS_status, char *state);
 
 int ble_status = 0;
 
@@ -26,6 +27,127 @@ typedef struct {
 } UARTDriverInfo_t;
 
 UARTDriverInfo_t UARTDriverInfo;
+
+struct Student_details  
+{ 
+    int id; 
+    char Name[20]; 
+    char ID_Number[25];
+    char Phone_Number_1[12];
+    char Phone_Number_2[12];
+    char IN_Time[15];
+    char IN_Time_Update[15];
+    char OUT_Time[15];
+    char OUT_Time_Update[15];
+    char IN_SMS_status[2];
+    char OUT_SMS_status[2];
+}; 
+
+struct Student_details Student[10000];
+int student_count=0;
+
+int csv_access()
+{
+int i=0,j=0,z=0;
+char data[100];
+FILE *file_state;
+char buffer[350000]; 
+   
+file_state = fopen (CSV_PATH, "r"); 
+if (file_state == NULL) 
+{ 
+fprintf(stderr, "\nError opening file\n"); 
+exit (1); 
+} 
+fread(buffer,350000,1,file_state);
+
+while(buffer[i] != '\0')
+{
+if(buffer[i] != ',' && buffer[i] != '\n')
+data[j++] = buffer[i];
+else
+{
+data[j]='\0';
+j=0;
+z++;
+
+if(z>=4)
+{
+if(z==5)
+{
+strcpy(Student[student_count].Name,data);
+}
+else if(z==6)
+{
+strcpy(Student[student_count].ID_Number,data);
+}
+else if(z==7)
+{
+strcpy(Student[student_count].Phone_Number_1,data);
+}
+else if(z==8)
+{
+strcpy(Student[student_count].Phone_Number_2,data);
+strcpy(Student[student_count].IN_SMS_status,"0");
+strcpy(Student[student_count].OUT_SMS_status,"0");
+strcpy(Student[student_count].IN_Time,"0");
+strcpy(Student[student_count].IN_Time_Update,"0");
+strcpy(Student[student_count].OUT_Time,"0");
+strcpy(Student[student_count].OUT_Time_Update,"0");
+
+z=4;
+student_count++;
+}
+
+}
+}
+i++;
+}    
+
+fclose (file_state); 
+student_count--;
+printf("Student Count = %d\n",student_count);
+
+}
+
+int csv_db()
+{
+int i = 0;
+for(i=0;i<=student_count;i++)
+{
+
+//printf("Name - %s\nID - %s\nPH_1 - %s\nPH_2 - %s\nIN - %s\nIN_Update - %s\nOUT - %s\nOUT_Update - %s\nIN_SMS - %s\nOUT_SMS - %s\n",Student[i].Name,Student[i].ID_Number,Student[i].Phone_Number_1,Student[i].Phone_Number_2,Student[i].IN_Time,Student[i].IN_Time_Update,Student[i].OUT_Time,Student[i].OUT_Time_Update,Student[i].IN_SMS_status,Student[i].OUT_SMS_status);
+//printf("\n Student_count %d ===========================================================================================\n",i);
+
+check_db(Student[i].Name,Student[i].ID_Number,Student[i].Phone_Number_1,Student[i].Phone_Number_2,Student[i].IN_Time,Student[i].IN_Time_Update,Student[i].OUT_Time,Student[i].OUT_Time_Update,Student[i].IN_SMS_status,Student[i].OUT_SMS_status,"write");
+
+}
+
+}
+
+int csv_update(char ID_Number[25], char timestamp[25])
+{
+
+int i = 0;
+for(i=0;i<=student_count;i++)
+{
+
+if(strcmp(Student[i].ID_Number,ID_Number) == 0)
+{
+
+	if(strcmp(Student[i].IN_Time,"0") == 0)
+	{
+	strcpy(Student[i].IN_Time,timestamp);
+	}
+	else
+	{
+	strcpy(Student[i].IN_Time_Update,timestamp);
+	}
+
+check_db(Student[i].Name,Student[i].ID_Number,Student[i].Phone_Number_1,Student[i].Phone_Number_2,Student[i].IN_Time,Student[i].IN_Time_Update,Student[i].OUT_Time,Student[i].OUT_Time_Update,Student[i].IN_SMS_status,Student[i].OUT_SMS_status,"update");
+}
+}
+}
 
 int openport(char *dev_name)
 {
@@ -51,7 +173,7 @@ int openport(char *dev_name)
 	return 1;
 }
 
-int check_db(char *timestamp, char *Data_to_Post, char *RSSI, char *state)
+int check_db(char *Name, char *ID_Number, char *Phone_Number_1, char *Phone_Number_2, char *IN_Time, char *IN_Time_Update, char *OUT_Time, char *OUT_Time_Update, char *IN_SMS_status, char *OUT_SMS_status, char *state)
 {
 	sqlite3 *db;
 	char *err_msg = 0;
@@ -68,16 +190,17 @@ int check_db(char *timestamp, char *Data_to_Post, char *RSSI, char *state)
 
 	if(state == "init")
 	{
-		sprintf(sql, "create table if not exists Student_Details(%s TEXT, %s TEXT, %s TEXT);", timestamp, Data_to_Post, RSSI);
+		sprintf(sql, "create table if not exists Student_Details(%s TEXT, %s TEXT, %s TEXT, %s TEXT, %s TEXT, %s TEXT, %s TEXT, %s TEXT, %s TEXT, %s TEXT);", "Name", "ID_Number", "Phone_Number_1", "Phone_Number_2", "IN_Time", "IN_Time_Update", "OUT_Time", "OUT_Time_Update", "IN_SMS_status", "OUT_SMS_status");
 	}
 	else if(state == "write")
 	{
-		sprintf(sql, "INSERT INTO Student_Details VALUES('%s', '%s', '%s');", timestamp, Data_to_Post, RSSI);
+		sprintf(sql, "INSERT INTO Student_Details VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');", Name, ID_Number, Phone_Number_1, Phone_Number_2, IN_Time, IN_Time_Update, OUT_Time, OUT_Time_Update, IN_SMS_status, OUT_SMS_status);
 	}
 	else if(state == "update")
 	{
-		sprintf(sql, "UPDATE Student_Details set timestamp = '%s', RSSI = '%s' where BEACON='%s';",  timestamp, RSSI, Data_to_Post);
+		sprintf(sql, "UPDATE Student_Details SET IN_Time = '%s', IN_Time_Update = '%s', OUT_Time = '%s', OUT_Time_Update = '%s', IN_SMS_status = '%s', OUT_SMS_status = '%s' WHERE ID_Number = '%s';", IN_Time, IN_Time_Update, OUT_Time, OUT_Time_Update, IN_SMS_status, OUT_SMS_status, ID_Number);
 	}
+
 	rc = sqlite3_exec(db, sql, 0, 0, &err_msg);
 
 	if (rc != SQLITE_OK ) {
@@ -214,7 +337,7 @@ printf("\n");
 			{
 				ID_data[byte_count] = '\0';
 				j=0;
-				for(i=5;i<19;i++)
+				for(i=7;i<19;i++)
 				{
 					ID_Number[j++] = MSBOF4BIT(ID_data[i]);
 					ID_Number[j++] = LSBOF4BIT(ID_data[i]);
@@ -230,7 +353,8 @@ printf("\n");
 				tm=localtime(&ltime);
 				sprintf(timestamp, "%02d%02d%02d%02d%02d%02d",tm->tm_mday, tm->tm_mon + 1, tm->tm_year + 1900 - 2000, tm->tm_hour, tm->tm_min, tm->tm_sec);
 
-				check_db(timestamp, ID_Number, ID_Rssi, "write");
+				//check_db(timestamp, ID_Number, ID_Rssi, "update");
+				csv_update(ID_Number, timestamp);
 
 				byte_count = 0;
 				memset(ID_data, '\0',21);
@@ -269,9 +393,11 @@ int main()
 {
 printf("Student Tracking Project - Version - %s\n",Version);
 
-if(check_db("TimeStamp", "BEACON", "RSSI", "init") == 0)
-{
+csv_access();
 
+if(check_db("Name", "ID_Number", "Phone_Number_1", "Phone_Number_2", "IN_Time", "IN_Time_Update", "OUT_Time", "OUT_Time_Update", "IN_SMS_status", "OUT_SMS_status","init") == 0)
+{
+csv_db();
 		pthread_t uart_reader_thread;
 
 		if(pthread_create(&uart_reader_thread, NULL, uart_reader, NULL)) {
@@ -284,4 +410,5 @@ if(check_db("TimeStamp", "BEACON", "RSSI", "init") == 0)
 			return 2;
 		}
 }
+
 }
